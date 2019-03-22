@@ -150,6 +150,7 @@ impl<'id, T> IndexMut<Idx32<'id>> for SmallArena<'id, T> {
 }
 
 const TINY_ARENA_ITEMS: usize = 65535;
+const NANO_ARENA_ITEMS: usize = 255;
 
 /// The index type for a tiny arena is 16 bits large
 ///
@@ -162,11 +163,22 @@ const TINY_ARENA_ITEMS: usize = 65535;
 /// ```
 pub type Idx16<'id> = Idx<'id, u16>;
 
-pub use tiny_arena::{in_tiny_arena, TinyArena};
+/// The index type for a nano arena is 8 bits large
+///
+/// # Examples:
+///
+/// ```rust
+///# use compact_arena::Idx8;
+///# use core::mem::size_of;
+/// assert_eq!(size_of::<Idx8<'_>>(), size_of::<u8>());
+/// ```
+pub type Idx8<'id> = Idx<'id, u8>;
+
+pub use tiny_arena::{in_tiny_arena, TinyArena, in_nano_arena, NanoArena};
 
 #[cfg(not(feature = "uninit"))]
 mod tiny_arena {
-    use crate::{Id, Idx16, TINY_ARENA_ITEMS};
+    use crate::{Id, Idx16, Idx8, TINY_ARENA_ITEMS, NANO_ARENA_ITEMS};
     use core::ops::{Index, IndexMut};
 
     /// Run code using a tiny arena. The indirection through a `FnOnce` is
@@ -225,15 +237,72 @@ mod tiny_arena {
             &mut self.data[i.index as usize]
         }
     }
+
+    /// Run code using a nano arena. The indirection through a `FnOnce` is
+    /// required to bind the indices to the arena. This version only works
+    /// for types that implement `Default` and `Copy`. You can use the `uninit`
+    /// feature to remove that restriction, at the cost of some unsafe code.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// compact_arena::in_nano_arena(|arena| {
+    ///     let idx = arena.add(1usize);
+    ///     assert_eq!(1, arena[idx]);
+    /// });
+    /// ```
+    #[inline]
+    pub fn in_nano_arena<F, O, T: Default + Copy>(f: F) -> O
+    where F: for<'t> FnOnce(&mut NanoArena<'t, T>) -> O {
+        f(&mut NanoArena {
+            id: Id::default(),
+            data: [Default::default(); NANO_ARENA_ITEMS],
+            len: 0,
+        })
+    }
+
+    /// A "nano" arena containing 255 elements. This variant only works with
+    /// types implementing `Default`.
+    ///
+    /// You will likely use this via the `in_nano_arena` function.
+    pub struct NanoArena<'id, T> {
+        id: Id<'id>,
+        len: u8,
+        data: [T; NANO_ARENA_ITEMS],
+    }
+
+    impl<'id, T> NanoArena<'id, T> {
+        /// Add an item to the arena, get an index back
+        pub fn add(&mut self, item: T) -> Idx8<'id> {
+            let i = self.len;
+            assert!((i as usize) < NANO_ARENA_ITEMS);
+            self.data[i as usize] = item;
+            self.len += 1;
+            Idx8 { id: self.id, index: i }
+        }
+    }
+
+    impl<'id, T> Index<Idx8<'id>> for NanoArena<'id, T> {
+        type Output = T;
+        fn index(&self, i: Idx8<'id>) -> &T {
+            &self.data[i.index as usize]
+        }
+    }
+
+    impl<'id, T> IndexMut<Idx8<'id>> for NanoArena<'id, T> {
+        fn index_mut(&mut self, i: Idx8<'id>) -> &mut T {
+            &mut self.data[i.index as usize]
+        }
+    }
 }
 
 #[cfg(feature = "uninit")]
 mod tiny_arena {
-    use crate::{Id, Idx16, TINY_ARENA_ITEMS};
+    use crate::{Id, Idx16, Idx8, TINY_ARENA_ITEMS, NANO_ARENA_ITEMS};
     use core::mem::{self, ManuallyDrop};
     use core::ops::{Index, IndexMut};
 
-    /// Run code using an arena. The indirection through a `FnOnce` is
+    /// Run code using a "tiny" arena. The indirection through a `FnOnce` is
     /// required to bind the indices to the arena.
     ///
     /// # Examples
@@ -291,5 +360,65 @@ mod tiny_arena {
             &mut self.data[i.index as usize]
         }
     }
-}
 
+    // nano arena
+
+    /// Run code using a "nano" arena. The indirection through a `FnOnce` is
+    /// required to bind the indices to the arena.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// compact_arena::in_tiny_arena(|arena| {
+    ///     let idx = arena.add(1usize);
+    ///     assert_eq!(1, arena[idx]);
+    /// });
+    /// ```
+    #[inline]
+    pub fn in_nano_arena<T, F: for<'t> FnOnce(&mut NanoArena<'t, T>) -> O, O>(f: F) -> O {
+        assert!(mem::size_of::<T>() > 0, "zero-sized types are not allowed");
+        f(&mut NanoArena {
+            id: Id::default(),
+            data: unsafe { mem::uninitialized() },
+            len: 0,
+        })
+    }
+
+    /// A "nano" arena containing up to 255 elements.
+    pub struct NanoArena<'id, T> {
+        id: Id<'id>,
+        len: u8,
+        data: [ManuallyDrop<T>; NANO_ARENA_ITEMS],
+    }
+
+    impl<'id, T> NanoArena<'id, T> {
+        /// Add an item to the arena, get an index back
+        pub fn add(&mut self, item: T) -> Idx8<'id> {
+            let i = self.len;
+            self.data[i as usize] = ManuallyDrop::new(item);
+            self.len += 1;
+            Idx8 { id: self.id, index: i }
+        }
+
+        /// dropping the arena drops all values
+        pub fn drop(&mut self) {
+            for i in 0..self.len as usize {
+                unsafe { ManuallyDrop::drop(&mut self.data[i]) };
+            }
+            self.len = 0;
+        }
+    }
+
+    impl<'id, T> Index<Idx8<'id>> for NanoArena<'id, T> {
+        type Output = T;
+        fn index(&self, i: Idx8<'id>) -> &T {
+            &self.data[i.index as usize]
+        }
+    }
+
+    impl<'id, T> IndexMut<Idx8<'id>> for NanoArena<'id, T> {
+        fn index_mut(&mut self, i: Idx8<'id>) -> &mut T {
+            &mut self.data[i.index as usize]
+        }
+    }
+}
