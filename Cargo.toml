@@ -1,0 +1,10 @@
+[package]
+authors = ["Andre Bogus <andre.bogus@ankordata.de>"]
+description = "A crate with some types to allow indexed arenas with small memory footprint"
+edition = "2018"
+name = "compact_arena"
+version = "0.1.0"
+repository = "https://github.com/llogiq/compact_arena"
+
+[features]
+uninit = []
