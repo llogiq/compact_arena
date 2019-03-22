@@ -1,9 +1,9 @@
 # compact_arena
 
-This is a crate with arenas that work with indices. Currently there are two
+This is a crate with arenas that work with indices. Currently there are three
 types: `SmallArena` uses 32-bit indices and can hold up to 2³² objects.
 `TinyArena` uses 16-bit indices and can hold up to 65535 objects, regardless
-of object size.
+of object size. `NanoArena` uses 8-bit indices and contain up to 255 objects.
 
 This can conserve memory in scenarios where we have a large-ish number of
 objects that need to relate to each other, e.g. in graph algorithms.
