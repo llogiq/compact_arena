@@ -112,7 +112,7 @@ pub fn in_arena<T, F: for<'t> FnOnce(&mut SmallArena<'t, T>) -> O, O>(f: F) -> O
     in_sized_arena(INITIAL_CAPACITY, f)
 }
 
-/// Same as `with`, but allows specifying the initial size of the arena.
+/// Same as `in_arena`, but allows specifying the initial size of the arena.
 #[inline]
 pub fn in_sized_arena<T, F, O>(size: u32, f: F) -> O
 where F: for<'t> FnOnce(&mut SmallArena<'t, T>) -> O {
