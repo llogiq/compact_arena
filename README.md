@@ -6,32 +6,35 @@ types: `SmallArena` uses 32-bit indices and can hold up to 2³² objects.
 of object size. `NanoArena` uses 8-bit indices and contain up to 255 objects.
 
 This can conserve memory in scenarios where we have a large-ish number of
-objects that need to relate to each other, e.g. in graph algorithms.
+relations between objects, e.g. in graph algorithms. `NanoArena` is likely
+most useful in embedded scenarios.
 
 ## Usage:
 
 Add the following dependency to your `Cargo.toml`
 
-```
-compact_arena = "0.0.1"
+```toml
+compact_arena = "0.2.0"
 ```
 
 By default, the `TinyArena` uses no unsafe code to maintain storage, but
 requires the stored types to be `Default + Copy`. To change this, you can use
 the `uninit` feature to enable usage on all types with a bit more unsafe code:
 
-```
-compact_arena = { version = "0.0.1", features = ["uninit"] }
+```toml
+compact_arena = { version = "0.2.0", features = ["uninit"] }
 ```
 
-In your code, you use it as follows:
+In your code, use it as follows:
 
-```
-compact_arena::in_arena(|arena| {
+```rust
+use compact_arena::in_arena;
+
+in_arena!(arena, {
     let hello = arena.add("Hello");
     let world = arena.add("World");
     println!("{}, {}!", arena[hello], arena[world]);
-}
+});
 ```
 
 For further information, please read the [documentation](https://docs.rs/compact_arena).
