@@ -14,7 +14,7 @@ most useful in embedded scenarios.
 Add the following dependency to your `Cargo.toml`
 
 ```toml
-compact_arena = "0.2.0"
+compact_arena = "0.2.1"
 ```
 
 By default, the `TinyArena` uses no unsafe code to maintain storage, but
@@ -22,7 +22,7 @@ requires the stored types to be `Default + Copy`. To change this, you can use
 the `uninit` feature to enable usage on all types with a bit more unsafe code:
 
 ```toml
-compact_arena = { version = "0.2.0", features = ["uninit"] }
+compact_arena = { version = "0.2.1", features = ["uninit"] }
 ```
 
 In your code, use it as follows:

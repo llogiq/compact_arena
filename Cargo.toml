@@ -5,7 +5,7 @@ edition = "2018"
 keywords = ["arena"]
 license = "MIT OR Apache-2.0"
 name = "compact_arena"
-version = "0.2.0"
+version = "0.2.1"
 repository = "https://github.com/llogiq/compact_arena"
 categories = ["memory-management"]
 

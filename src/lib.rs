@@ -21,7 +21,7 @@
 //!
 //! # Examples
 //!
-//! ```rust
+//! ```
 //!# use compact_arena::in_arena;
 //! in_arena!(arena, {
 //!     let idx = arena.add(1usize);
@@ -32,7 +32,7 @@
 //! You can use `in_sized_arena` to change the initial size of the backing
 //! memory:
 //!
-//! ```rust
+//! ```
 //!# #[allow(dead_code)]
 //!# use compact_arena::in_arena;
 //! in_arena!(arena / 1, {
@@ -43,7 +43,7 @@
 //!
 //! You can nest calls to work with multiple arenas:
 //!
-//! ```rust
+//! ```
 //!# #[allow(dead_code)]
 //!# use compact_arena::in_arena;
 //! in_arena!(a / 1, {
@@ -56,7 +56,7 @@
 //!
 //! The compiler gives you a type error if you mix up arenas:
 //!
-//! ```rust,compile_fail
+//! ```compile_fail
 //!# use compact_arena::in_arena;
 //! in_arena!(a / 1, {
 //!     in_arena!(b / 1, {
@@ -64,6 +64,30 @@
 //!         let _ = b[i];
 //!     })
 //! });
+//! ```
+//!
+//! The indices should not be able to escape the `in_arena` call
+//!
+//! ```compile_fail
+//!# use compact_arena::in_arena;
+//! let idx = in_arena!(arena / 1, arena.add(1usize));
+//! assert!(core::mem::size_of_val(&a) == 4);
+//! ```
+//!
+//! Also, arenas may not be instantiated recursively:
+//!
+//! ```compile_fail
+//!# use compact_arena::in_arena;
+//! fn recursive(idx: Option<Box<dyn std::any::Any>>) {
+//!     in_arena!(arena, {
+//!         if let Some(idx) = idx {
+//!             println!("{}", arena[*idx.downcast().unwrap()]);
+//!         } else {
+//!             recursive(Some(Box::new(arena.add("hello"))));
+//!         }
+//!     });
+//! }
+//! recursive(None);
 //! ```
 
 use core::ops::{Index, IndexMut};
@@ -93,9 +117,8 @@ impl<I: Copy + Clone, B> Clone for Idx<I, B> {
 ///
 /// # Examples
 ///
-/// ```rust
-///# use core::mem::size_of;
-///# use compact_arena::Idx32;
+/// ```
+///# use {compact_arena::Idx32, core::mem::size_of};
 /// assert_eq!(size_of::<Idx32<String>>(), size_of::<u32>());
 /// ```
 pub type Idx32<B> = Idx<u32, B>;
@@ -105,9 +128,8 @@ pub type Idx32<B> = Idx<u32, B>;
 ///
 /// # Examples:
 ///
-/// ```rust
-///# use compact_arena::Idx16;
-///# use core::mem::size_of;
+/// ```
+///# use {compact_arena::Idx16, core::mem::size_of};
 /// assert_eq!(size_of::<Idx16<usize>>(), size_of::<u16>());
 /// ```
 pub type Idx16<B> = Idx<u16, B>;
@@ -117,9 +139,8 @@ pub type Idx16<B> = Idx<u16, B>;
 ///
 /// # Examples:
 ///
-/// ```rust
-///# use compact_arena::Idx8;
-///# use core::mem::size_of;
+/// ```
+///# use {compact_arena::Idx8, core::mem::size_of};
 /// assert_eq!(size_of::<Idx8<i128>>(), size_of::<u8>());
 /// ```
 pub type Idx8<B> = Idx<u8, B>;
@@ -166,10 +187,9 @@ macro_rules! in_arena {
     ($arena:ident, $e:expr) => { in_arena!($arena / 1024*1024, $e) };
     ($arena:ident / $cap:expr, $e:expr) => {
         {
-            #[derive(Copy, Clone)]
             struct Tag;
-
-            let mut x = unsafe { compact_arena::SmallArena::new(Tag, $cap) };
+            let mut tag = Tag;
+            let mut x = unsafe { compact_arena::SmallArena::new(&mut tag, $cap) };
             {
                 let $arena = &mut x;
                 $e
@@ -183,7 +203,7 @@ macro_rules! in_arena {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```
 ///# use compact_arena::in_tiny_arena;
 /// in_tiny_arena!(arena, {
 ///     let idx = arena.add(1usize);
@@ -210,7 +230,7 @@ macro_rules! in_tiny_arena {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```
 ///# use compact_arena::in_nano_arena;
 /// in_nano_arena!(arena, {
 ///     let idx = arena.add(1usize);

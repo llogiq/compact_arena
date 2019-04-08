@@ -16,5 +16,5 @@ fn bottom_up_tree<B>(arena: &mut SmallArena<Tree<B>, B>, depth: usize)
 
 #[test]
 fn tree() {
-    in_arena!(arena, bottom_up_tree(arena, 3));
+    in_arena!(arena, { bottom_up_tree(arena, 3); });
 }
