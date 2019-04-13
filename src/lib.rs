@@ -1,4 +1,5 @@
 #![deny(missing_docs)]
+#![deny(warnings)]
 
 //! A crate with a few single-typed arenas that work exclusively with indexes.
 //! The indexes are sized with the arena. This can reduce memory footprint when
