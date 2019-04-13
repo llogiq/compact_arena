@@ -1,0 +1,41 @@
+language: rust
+sudo: false
+
+env:
+  global:
+    - RUST_BACKTRACE=1
+
+rust:
+  - stable
+
+script:
+  - cargo test
+  - cargo test --release
+
+matrix:
+  include:
+
+    - name: no_default_features
+      os: linux
+      rust: stable
+      script: 
+        - cargo test --no-default-features
+        - cargo test --release --no-default-features
+
+    - name: uninit
+      os: linux
+      rust: stable
+      script:
+        - cargo test --no-default-features --features uninit
+        - cargo test --release --no-default-features --features uninit
+
+    - name: clippy
+      os: linux
+      rust: stable
+      install:
+        - rustup component add clippy
+      script: 
+        - cargo clippy --verbose --all --tests
+        - cargo clippy --verbose --all --tests --no-default-features
+        - cargo clippy --verbose --all --tests --no-default-features --features uninit
+
