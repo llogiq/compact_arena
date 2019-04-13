@@ -1,5 +1,10 @@
 # compact_arena
 
+[![Travis Build Status][travis-badge]][travis-url]
+
+[travis-badge]: https://travis-ci.org/llogiq/compact_arena.svg?branch=master
+[travis-url]: https://travis-ci.org/llogiq/compact_arena
+
 This is a crate with arenas that work with indices. Currently there are three
 types: `SmallArena` uses 32-bit indices and can hold up to 2³² objects.
 `TinyArena` uses 16-bit indices and can hold up to 65535 objects, regardless
