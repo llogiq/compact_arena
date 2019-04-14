@@ -1,4 +1,5 @@
 #![deny(missing_docs)]
+#![deny(warnings)]
 
 //! A crate with a few single-typed arenas that work exclusively with indexes.
 //! The indexes are sized with the arena. This can reduce memory footprint when
@@ -447,9 +448,11 @@ mod tiny_arena {
             self.len += 1;
             Idx16 { tag: self.tag, index: i }
         }
+    }
 
-        /// dropping the arena drops all values
-        pub fn drop(&mut self) {
+    impl<T, B> Drop for TinyArena<T, B> {
+        // dropping the arena drops all values
+        fn drop(&mut self) {
             for i in 0..self.len as usize {
                 unsafe { ManuallyDrop::drop(&mut self.data[i]) };
             }
@@ -504,9 +507,11 @@ mod tiny_arena {
             self.len += 1;
             Idx8 { tag: self.tag, index: i }
         }
+    }
 
-        /// dropping the arena drops all values
-        pub fn drop(&mut self) {
+    impl<T, B> Drop for NanoArena<T, B> {
+        // dropping the arena drops all values
+        fn drop(&mut self) {
             for i in 0..self.len as usize {
                 unsafe { ManuallyDrop::drop(&mut self.data[i]) };
             }
