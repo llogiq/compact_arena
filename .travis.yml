@@ -18,7 +18,7 @@ matrix:
     - name: no_default_features
       os: linux
       rust: stable
-      script: 
+      script:
         - cargo test --no-default-features
         - cargo test --release --no-default-features
 
@@ -29,12 +29,19 @@ matrix:
         - cargo test --no-default-features --features uninit
         - cargo test --release --no-default-features --features uninit
 
+    - name: all_features
+      os: linux
+      rust: stable
+      script:
+        - cargo test --all-features
+        - cargo test --release --all-features
+
     - name: clippy
       os: linux
       rust: stable
       install:
         - rustup component add clippy
-      script: 
+      script:
         - cargo clippy --verbose --all --tests
         - cargo clippy --verbose --all --tests --no-default-features
         - cargo clippy --verbose --all --tests --no-default-features --features uninit

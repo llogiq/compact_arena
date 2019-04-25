@@ -1,6 +1,8 @@
 #![deny(missing_docs)]
 #![deny(warnings)]
 
+#![cfg_attr(not(feature = "alloc"), no_std)]
+
 //! A crate with a few single-typed arenas that work exclusively with indexes.
 //! The indexes are sized with the arena. This can reduce memory footprint when
 //! changing pointers to indices e.g. on 64-bit systems.
@@ -13,40 +15,25 @@
 //! other hand, we can store indices within objects that we put into the arena,
 //! which is a boon to things like graph data structures.
 //!
-//! A word of warning: The soundness of this isn't proven, and it may well be
-//! possible to use the macros provided in this crate to create undefined
-//! behavior. For simple use cases, you should be pretty safe.
-//!
 //! Use the `mk_arena!` to create an arena, then `add` items to it and index it
 //! with `arena[idx]`.
 //!
 //! # Examples
 //!
 //! ```
-//!# use compact_arena::mk_arena;
-//! mk_arena!(arena);
+//!# use compact_arena::mk_nano_arena;
+//! mk_nano_arena!(arena);
 //! let idx = arena.add(1usize);
 //! assert_eq!(1, arena[idx]);
-//! ```
-//!
-//! You can give `mk_arena!` a second argument to change the initial capacity
-//! of the backing memory:
-//!
-//! ```
-//!# #[allow(dead_code)]
-//!# use compact_arena::mk_arena;
-//! mk_arena!(arena, 1);
-//! ..
-//!# ; arena.add(1usize);
 //! ```
 //!
 //! You can work with multiple arenas:
 //!
 //! ```
 //!# #[allow(dead_code)]
-//!# use compact_arena::mk_arena;
-//! mk_arena!(a, 1);
-//! mk_arena!(b, 1);
+//!# use compact_arena::mk_nano_arena;
+//! mk_nano_arena!(a);
+//! mk_nano_arena!(b);
 //! ..
 //!# ; a.add(1u32); b.add(1u32);
 //! ```
@@ -54,31 +41,31 @@
 //! The compiler gives you a type error if you mix up arenas:
 //!
 //! ```compile_fail
-//!# use compact_arena::mk_arena;
-//! mk_arena!(a, 1);
-//! mk_arena!(b, 1);
+//!# use compact_arena::mk_nano_arena;
+//! mk_nano_arena!(a);
+//! mk_nano_arena!(b);
 //! let i = a.add(1usize);
 //! let _ = b[i];
 //! ```
 //!
-//! The indices should not be able to escape the block with the `mk_arena` call
+//! The indices should not be able to escape the block with the `mk_*arena` call
 //!
 //! ```compile_fail
-//!# use compact_arena::mk_arena;
-//! let idx = { mk_arena!(arena, 1); arena.add(1usize)) };
+//!# use compact_arena::mk_tiny_arena;
+//! let idx = { mk_tiny_arena!(arena, 1); arena.add(1usize)) };
 //! assert!(core::mem::size_of_val(&a) == 4);
 //! ```
 //!
 //! Also, arenas may not be instantiated recursively:
 //!
-//! ```compile_fail
-//!# use compact_arena::{mk_arena, Idx32};
-//! fn recursive(idx: Option<Box<dyn std::any::Any>>) {
-//!     mk_arena!(arena, 2); // `tag` does not live long enough
+//! ```compile-fail
+//!# use compact_arena::{mk_nano_arena, Idx8};
+//! fn recursive(idx: Option<Idx32<'_>>) {
+//!     mk_nano_arena!(arena, 2); // `tag` does not live long enough
 //!     if let Some(idx) = idx {
-//!         assert_eq!("hello", arena[*idx.downcast().unwrap()]);
+//!         assert_eq!("hello", arena[idx]);
 //!     } else {
-//!         recursive(Some(Box::new(arena.add("hello"))));
+//!         recursive(Some(arena.add("hello")));
 //!     }
 //! }
 //! recursive(None);
@@ -87,7 +74,7 @@
 use core::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use core::ops::{Index, IndexMut};
 use core::marker::PhantomData;
-use core::result::Result;
+#[cfg(feature = "alloc")]
 use std::error::Error;
 
 #[derive(Copy, Clone, PartialOrd, PartialEq, Eq)]
@@ -159,6 +146,7 @@ impl<T> Display for CapacityExceeded<T> {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<T> Error for CapacityExceeded<T> {
     fn description(&self) -> &str { "Capacity exceeded" }
 }
@@ -168,6 +156,7 @@ impl<T> Error for CapacityExceeded<T> {
 /// using many pointer-heavy objects on 64-bit systems.
 ///
 /// You can obtain an instance of this type by calling `mk_arena`.
+#[cfg(feature = "alloc")]
 pub struct SmallArena<'tag, T> {
     tag: InvariantLifetime<'tag>,
     // TODO: Use a custom structure, forbid resizing over 2G items
@@ -203,9 +192,10 @@ pub struct SmallArena<'tag, T> {
 /// The capacity will be extended automatically, so `new_arena!(0)` creates a
 /// valid arena with initially zero capacity that will be extended on the first
 /// `add`.
+#[cfg(feature = "alloc")]
 #[macro_export]
 macro_rules! mk_arena {
-    ($name:ident) => { mk_arena!($name, 1024*1024) };
+    ($name:ident) => { mk_arena!($name, 128*1024) };
     ($name:ident, $cap:expr) => {
         let mut tag = ();
         let mut $name = unsafe {
@@ -218,6 +208,7 @@ macro_rules! mk_arena {
 ///
 /// This may make it easier to see the scope (and was the old interface before
 /// I managed to fix the soundness problems).
+#[cfg(feature = "alloc")]
 #[macro_export]
 macro_rules! in_arena {
     ($name:ident, $e:expr) => {
@@ -229,6 +220,27 @@ macro_rules! in_arena {
         mk_arena!(arena, $cap);
         let $name = &mut arena;
         $e
+    };
+}
+
+/// Create a tiny arena. The indirection through this macro is required
+/// to bind the indices to the arena.
+///
+/// # Examples
+///
+/// ```
+///# use compact_arena::mk_tiny_arena;
+/// mk_tiny_arena!(arena);
+/// let idx = arena.add(1usize);
+/// assert_eq!(1, arena[idx]);
+/// ```
+#[macro_export]
+macro_rules! mk_tiny_arena {
+    ($name:ident) => {
+        let mut tag = ();
+        let mut $name = unsafe {
+            compact_arena::TinyArena::new(&mut tag)
+        };
     };
 }
 
@@ -256,6 +268,27 @@ macro_rules! in_tiny_arena {
     }};
 }
 
+/// Create a tiny arena. The indirection through this macro is required
+/// to bind the indices to the arena.
+///
+/// # Examples
+///
+/// ```
+///# use compact_arena::mk_nano_arena;
+/// mk_nano_arena!(arena);
+/// let idx = arena.add(1usize);
+/// assert_eq!(1, arena[idx]);
+/// ```
+#[macro_export]
+macro_rules! mk_nano_arena {
+    ($name:ident) => {
+        let mut tag = ();
+        let mut $name = unsafe {
+            compact_arena::NanoArena::new(&mut tag)
+        };
+    };
+}
+
 /// Run code using a nano arena. The indirection through the macro is
 /// required to bind the indices to the arena.
 ///
@@ -280,6 +313,7 @@ macro_rules! in_nano_arena {
     }};
 }
 
+#[cfg(feature = "alloc")]
 impl<'tag, T> SmallArena<'tag, T> {
     /// create a new SmallArena. Don't do this manually. Use the
     /// [`in_arena`] macro instead.
@@ -301,12 +335,12 @@ impl<'tag, T> SmallArena<'tag, T> {
     #[inline]
     pub fn try_add(&mut self, item: T)
     -> Result<Idx32<'tag>, CapacityExceeded<T>> {
-        let i = self.data.len() as u32;
-        if i == core::u32::MAX {
+        let i = self.data.len();
+        if i == (core::u32::MAX as usize) {
             return Err(CapacityExceeded(item));
         }
         self.data.push(item);
-        Ok(Idx { index: i, tag: self.tag })
+        Ok(Idx { index: (i as u32), tag: self.tag })
     }
 
     /// Add an item to the arena, get an index back.
@@ -316,6 +350,7 @@ impl<'tag, T> SmallArena<'tag, T> {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<'tag, T> Index<Idx32<'tag>> for SmallArena<'tag, T> {
     type Output = T;
 
@@ -327,6 +362,7 @@ impl<'tag, T> Index<Idx32<'tag>> for SmallArena<'tag, T> {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<'tag, T> IndexMut<Idx32<'tag>> for SmallArena<'tag, T> {
     /// Gets a mutable reference to the value at this index.
     #[inline]
@@ -336,8 +372,8 @@ impl<'tag, T> IndexMut<Idx32<'tag>> for SmallArena<'tag, T> {
     }
 }
 
-const TINY_ARENA_ITEMS: usize = 65535;
-const NANO_ARENA_ITEMS: usize = 255;
+const TINY_ARENA_ITEMS: u32 = 65536;
+const NANO_ARENA_ITEMS: u16 = 256;
 
 pub use tiny_arena::{TinyArena, NanoArena};
 
@@ -345,7 +381,6 @@ pub use tiny_arena::{TinyArena, NanoArena};
 mod tiny_arena {
     use crate::{CapacityExceeded, Idx16, Idx8, InvariantLifetime,
                 TINY_ARENA_ITEMS, NANO_ARENA_ITEMS};
-    use core::ops::{Index, IndexMut};
     use core::marker::PhantomData;
 
     /// A "tiny" arena containing <64K elements. This variant only works with
@@ -354,8 +389,8 @@ mod tiny_arena {
     /// You will likely use this via the `in_tiny_arena` function.
     pub struct TinyArena<'tag, T> {
         tag: InvariantLifetime<'tag>,
-        len: u16,
-        data: [T; TINY_ARENA_ITEMS],
+        pub(crate) len: u32,
+        pub(crate) data: [T; TINY_ARENA_ITEMS as usize],
     }
 
     impl<'tag, T: Copy + Clone + Default> TinyArena<'tag, T> {
@@ -371,7 +406,7 @@ mod tiny_arena {
         pub unsafe fn new(_: &'tag mut ()) -> TinyArena<'tag, T> {
             TinyArena {
                 tag: InvariantLifetime(PhantomData),
-                data: [Default::default(); TINY_ARENA_ITEMS],
+                data: [Default::default(); TINY_ARENA_ITEMS as usize],
                 len: 0
             }
         }
@@ -381,12 +416,12 @@ mod tiny_arena {
         pub fn try_add(&mut self, item: T)
         -> Result<Idx16<'tag>, CapacityExceeded<T>> {
             let i = self.len;
-            if (i as usize) >= TINY_ARENA_ITEMS {
+            if i >= TINY_ARENA_ITEMS {
                 return Err(CapacityExceeded(item));
             }
             self.data[i as usize] = item;
             self.len += 1;
-            Ok(Idx16 { index: i, tag: self.tag })
+            Ok(Idx16 { index: i as u16, tag: self.tag })
         }
 
         /// Add an item to the arena, get an index back
@@ -395,29 +430,14 @@ mod tiny_arena {
         }
     }
 
-    impl<'tag, T> Index<Idx16<'tag>> for TinyArena<'tag, T> {
-        type Output = T;
-        fn index(&self, i: Idx16<'tag>) -> &T {
-            debug_assert!(i.index < self.len);
-            &self.data[i.index as usize]
-        }
-    }
-
-    impl<'tag, T> IndexMut<Idx16<'tag>> for TinyArena<'tag, T> {
-        fn index_mut(&mut self, i: Idx16<'tag>) -> &mut T {
-            debug_assert!(i.index < self.len);
-            &mut self.data[i.index as usize]
-        }
-    }
-
-    /// A "nano" arena containing 255 elements. This variant only works with
-    /// types implementing `Default`.
+    /// A "nano" arena containing up to 256 elements. This variant only works
+    /// with types implementing `Default`.
     ///
-    /// You will likely use this via the `in_nano_arena` function.
+    /// You will likely use this via the `mk_nano_arena` macro.
     pub struct NanoArena<'tag, T> {
         tag: InvariantLifetime<'tag>,
-        len: u8,
-        data: [T; NANO_ARENA_ITEMS],
+        pub(crate) len: u16,
+        pub(crate) data: [T; NANO_ARENA_ITEMS as usize],
     }
 
     impl<'tag, T: Default + Copy> NanoArena<'tag, T> {
@@ -433,7 +453,7 @@ mod tiny_arena {
         pub unsafe fn new(_: &'tag mut ()) -> NanoArena<'tag, T> {
             NanoArena {
                 tag: InvariantLifetime(PhantomData),
-                data: [Default::default(); NANO_ARENA_ITEMS],
+                data: [Default::default(); NANO_ARENA_ITEMS as usize],
                 len: 0
             }
         }
@@ -443,32 +463,17 @@ mod tiny_arena {
         pub fn try_add(&mut self, item: T)
         -> Result<Idx8<'tag>, CapacityExceeded<T>> {
             let i = self.len;
-            if (i as usize) >= NANO_ARENA_ITEMS {
+            if i >= NANO_ARENA_ITEMS {
                 return Err(CapacityExceeded(item));
             }
             self.data[i as usize] = item;
             self.len += 1;
-            Ok(Idx8 { index: i, tag: self.tag })
+            Ok(Idx8 { index: i as u8, tag: self.tag })
         }
 
         /// Add an item to the arena, get an index back
         pub fn add(&mut self, item: T) -> Idx8<'tag> {
             self.try_add(item).unwrap()
-        }
-    }
-
-    impl<'tag, T> Index<Idx8<'tag>> for NanoArena<'tag, T> {
-        type Output = T;
-        fn index(&self, i: Idx8<'tag>) -> &T {
-            debug_assert!(i.index < self.len);
-            &self.data[i.index as usize]
-        }
-    }
-
-    impl<'tag, T> IndexMut<Idx8<'tag>> for NanoArena<'tag, T> {
-        fn index_mut(&mut self, i: Idx8<'tag>) -> &mut T {
-            debug_assert!(i.index < self.len);
-            &mut self.data[i.index as usize]
         }
     }
 }
@@ -479,13 +484,12 @@ mod tiny_arena {
                 TINY_ARENA_ITEMS, NANO_ARENA_ITEMS};
     use core::marker::PhantomData;
     use core::mem::{self, ManuallyDrop};
-    use core::ops::{Index, IndexMut};
 
     /// A "tiny" arena containing <64K elements.
     pub struct TinyArena<'tag, T> {
         tag: InvariantLifetime<'tag>,
-        len: u16,
-        data: [ManuallyDrop<T>; TINY_ARENA_ITEMS],
+        pub(crate) len: u32,
+        pub(crate) data: [ManuallyDrop<T>; TINY_ARENA_ITEMS as usize],
     }
 
     impl<'tag, T> TinyArena<'tag, T> {
@@ -498,17 +502,17 @@ mod tiny_arena {
             }
         }
 
-       /// Add an item to the arena, get an index or CapacityExceeded back.
+        /// Add an item to the arena, get an index or CapacityExceeded back.
         #[inline]
         pub fn try_add(&mut self, item: T)
         -> Result<Idx16<'tag>, CapacityExceeded<T>> {
             let i = self.len;
-            if (i as usize) >= TINY_ARENA_ITEMS {
+            if i >= TINY_ARENA_ITEMS {
                 return Err(CapacityExceeded(item));
             }
             self.data[i as usize] = ManuallyDrop::new(item);
             self.len += 1;
-            Ok(Idx16 { index: i, tag: self.tag })
+            Ok(Idx16 { index: i as u16, tag: self.tag })
         }
 
         /// Add an item to the arena, get an index back
@@ -526,31 +530,18 @@ mod tiny_arena {
         }
     }
 
-    impl<'tag, T> Index<Idx16<'tag>> for TinyArena<'tag, T> {
-        type Output = T;
-        fn index(&self, i: Idx16<'tag>) -> &T {
-            &self.data[i.index as usize]
-        }
-    }
-
-    impl<'tag, T> IndexMut<Idx16<'tag>> for TinyArena<'tag, T> {
-        fn index_mut(&mut self, i: Idx16<'tag>) -> &mut T {
-            &mut self.data[i.index as usize]
-        }
-    }
-
-    // nano arena
-
-    /// A "nano" arena containing up to 255 elements.
+    /// A "nano" arena containing up to 256 elements.
+    ///
+    /// You will likely use this via the `mk_nano_arena` macro.
     pub struct NanoArena<'tag, T> {
         tag: InvariantLifetime<'tag>,
-        len: u8,
-        data: [ManuallyDrop<T>; NANO_ARENA_ITEMS],
+        pub(crate) len: u16,
+        pub(crate) data: [ManuallyDrop<T>; NANO_ARENA_ITEMS as usize],
     }
 
     impl<'tag, T> NanoArena<'tag, T> {
         /// create a new NanoArena. Don't do this manually. Use the
-        /// [`in_nano_arena`] macro instead.
+        /// [`mk_nano_arena`] macro instead.
         ///
         /// # Safety
         ///
@@ -571,12 +562,12 @@ mod tiny_arena {
         pub fn try_add(&mut self, item: T)
         -> Result<Idx8<'tag>, CapacityExceeded<T>> {
             let i = self.len;
-            if (i as usize) >= NANO_ARENA_ITEMS {
+            if i >= NANO_ARENA_ITEMS {
                 return Err(CapacityExceeded(item));
             }
             self.data[i as usize] = ManuallyDrop::new(item);
             self.len += 1;
-            Ok(Idx8 { index: i, tag: self.tag })
+            Ok(Idx8 { index: i as u8, tag: self.tag })
         }
 
         /// Add an item to the arena, get an index back
@@ -593,20 +584,36 @@ mod tiny_arena {
             }
         }
     }
+}
 
-    impl<'tag, T> Index<Idx8<'tag>> for NanoArena<'tag, T> {
-        type Output = T;
+impl<'tag, T> Index<Idx16<'tag>> for TinyArena<'tag, T> {
+    type Output = T;
 
-        /// Gets an immutable reference to the value at this index
-        fn index(&self, i: Idx8<'tag>) -> &T {
-            &self.data[i.index as usize]
-        }
+    fn index(&self, i: Idx16<'tag>) -> &T {
+        debug_assert!(u32::from(i.index) < self.len);
+        unsafe { self.data.get_unchecked(usize::from(i.index)) }
     }
+}
 
-    impl<'tag, T> IndexMut<Idx8<'tag>> for NanoArena<'tag, T> {
-        /// Gets a mutable reference to the value at this index
-        fn index_mut(&mut self, i: Idx8<'tag>) -> &mut T {
-            &mut self.data[i.index as usize]
-        }
+impl<'tag, T> IndexMut<Idx16<'tag>> for TinyArena<'tag, T> {
+    fn index_mut(&mut self, i: Idx16<'tag>) -> &mut T {
+        debug_assert!(u32::from(i.index) < self.len);
+        unsafe { self.data.get_unchecked_mut(usize::from(i.index)) }
+    }
+}
+
+impl<'tag, T> Index<Idx8<'tag>> for NanoArena<'tag, T> {
+    type Output = T;
+
+    fn index(&self, i: Idx8<'tag>) -> &T {
+        debug_assert!(u16::from(i.index) < self.len);
+        unsafe { self.data.get_unchecked(usize::from(i.index)) }
+    }
+}
+
+impl<'tag, T> IndexMut<Idx8<'tag>> for NanoArena<'tag, T> {
+    fn index_mut(&mut self, i: Idx8<'tag>) -> &mut T {
+        debug_assert!(u16::from(i.index) < self.len);
+        unsafe { self.data.get_unchecked_mut(usize::from(i.index)) }
     }
 }
