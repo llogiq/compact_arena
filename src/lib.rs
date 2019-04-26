@@ -195,11 +195,11 @@ pub struct SmallArena<'tag, T> {
 #[cfg(feature = "alloc")]
 #[macro_export]
 macro_rules! mk_arena {
-    ($name:ident) => { mk_arena!($name, 128*1024) };
+    ($name:ident) => { $crate::mk_arena!($name, 128*1024) };
     ($name:ident, $cap:expr) => {
         let mut tag = ();
         let mut $name = unsafe {
-            compact_arena::SmallArena::new(&mut tag, $cap)
+            $crate::SmallArena::new(&mut tag, $cap)
         };
     };
 }
@@ -212,12 +212,12 @@ macro_rules! mk_arena {
 #[macro_export]
 macro_rules! in_arena {
     ($name:ident, $e:expr) => {
-        mk_arena!(arena);
+        $crate::mk_arena!(arena);
         let $name = &mut arena;
         $e
     };
     ($name:ident / $cap:expr, $e:expr) => {
-        mk_arena!(arena, $cap);
+        $crate::mk_arena!(arena, $cap);
         let $name = &mut arena;
         $e
     };
@@ -239,7 +239,7 @@ macro_rules! mk_tiny_arena {
     ($name:ident) => {
         let mut tag = ();
         let mut $name = unsafe {
-            compact_arena::TinyArena::new(&mut tag)
+            $crate::TinyArena::new(&mut tag)
         };
     };
 }
@@ -259,12 +259,9 @@ macro_rules! mk_tiny_arena {
 #[macro_export]
 macro_rules! in_tiny_arena {
     ($arena:ident, $e:expr) => {{
-        let mut tag = ();
-        let mut x = unsafe { compact_arena::TinyArena::new(&mut tag) };
-        {
-            let $arena = &mut x;
-            $e
-        }
+        $crate::mk_tiny_arena!(arena);
+        let $arena = &mut arena;
+        $e
     }};
 }
 
@@ -284,7 +281,7 @@ macro_rules! mk_nano_arena {
     ($name:ident) => {
         let mut tag = ();
         let mut $name = unsafe {
-            compact_arena::NanoArena::new(&mut tag)
+            $crate::NanoArena::new(&mut tag)
         };
     };
 }
@@ -304,12 +301,9 @@ macro_rules! mk_nano_arena {
 #[macro_export]
 macro_rules! in_nano_arena {
     ($arena:ident, $e:expr) => {{
-        let mut tag = ();
-        let mut x = unsafe { compact_arena::NanoArena::new(&mut tag) };
-        {
-            let $arena = &mut x;
-            $e
-        }
+        $crate::mk_nano_arena!(arena);
+        let $arena = &mut arena;
+        $e
     }};
 }
 
