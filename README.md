@@ -1,9 +1,13 @@
 # compact_arena
 
-[![Travis Build Status][travis-badge]][travis-url]
+[![Travis Build Status][travis-badge]][travis-url] [![Docs][doc-badge]][doc-url] [![Current Crates.io Version][crates-badge]][crates-url]
 
 [travis-badge]: https://travis-ci.org/llogiq/compact_arena.svg?branch=master
 [travis-url]: https://travis-ci.org/llogiq/compact_arena
+[doc-badge]: https://docs.rs/compact_arena/badge.svg
+[doc-url]: https://docs.rs/compact_arena
+[crates-badge]: https://img.shields.io/crates/v/compact_arena.svg
+[crates-url]: https://crates.io/crates/compact_arena
 
 This is a crate with arenas that work with indices. Currently there are three
 types: `SmallArena` uses 32-bit indices and can hold up to 2³² objects.
