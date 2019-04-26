@@ -52,16 +52,15 @@
 //!
 //! ```compile_fail
 //!# use compact_arena::mk_tiny_arena;
-//! let idx = { mk_tiny_arena!(arena, 1); arena.add(1usize)) };
-//! assert!(core::mem::size_of_val(&a) == 4);
+//! let idx = { mk_tiny_arena!(arena); arena.add(1usize) };
 //! ```
 //!
 //! Also, arenas may not be instantiated recursively:
 //!
-//! ```compile-fail
+//! ```compile_fail
 //!# use compact_arena::{mk_nano_arena, Idx8};
-//! fn recursive(idx: Option<Idx32<'_>>) {
-//!     mk_nano_arena!(arena, 2); // `tag` does not live long enough
+//! fn recursive(idx: Option<Idx8<'_>>) {
+//!     mk_nano_arena!(arena); // `tag` does not live long enough
 //!     if let Some(idx) = idx {
 //!         assert_eq!("hello", arena[idx]);
 //!     } else {
@@ -383,7 +382,7 @@ mod tiny_arena {
                 TINY_ARENA_ITEMS, NANO_ARENA_ITEMS};
     use core::marker::PhantomData;
 
-    /// A "tiny" arena containing <64K elements. This variant only works with
+    /// A "tiny" arena containing up to 65536 elements. This variant only works with
     /// types implementing `Default`.
     ///
     /// You will likely use this via the `in_tiny_arena` function.
