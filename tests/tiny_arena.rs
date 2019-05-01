@@ -1,9 +1,8 @@
+use compact_arena::in_tiny_arena;
 
 #[cfg(not(miri))] // this will take too much time for miri
 #[test]
 fn add_65536_objects() {
-    use compact_arena::in_tiny_arena;
-
     in_tiny_arena!(arena, {
         for _ in 0..=65535 {
             arena.add(42); // all should be ok
@@ -15,12 +14,21 @@ fn add_65536_objects() {
 #[test]
 #[should_panic(expected = "Capacity Exceeded")]
 fn add_65537_objects() {
-    use compact_arena::in_tiny_arena;
-
     in_tiny_arena!(arena, {
         for _ in 0..=65535 {
             arena.add(42); // all should be ok
         }
         arena.add(65537); // should panic
     });
+}
+
+#[test]
+fn two_tiny_arenas() {
+    assert_eq!(3, in_tiny_arena!(a, {
+        in_tiny_arena!(b, {
+            let x = a.add(1usize);
+            let y = b.add(2usize);
+            a[x] + b[y]
+        })
+    }));
 }

@@ -1,0 +1,25 @@
+error[E0597]: `tag` does not live long enough
+  --> $DIR/mixup.rs:7:9
+   |
+6  |   /     in_nano_arena!(a, {
+7  |   |         in_nano_arena!(b, {
+   |   |_________^
+   |  ||_________|
+   | |||
+8  | |||             let _ = a.add(1usize);
+9  | |||             let x = a.add(1usize);
+10 | |||             let y = b.add(1usize);
+11 | |||             let _ = b[x];
+12 | |||         })
+   | |||          ^
+   | |||__________|
+   | |_|__________borrowed value does not live long enough
+   |   |          `tag` dropped here while still borrowed
+13 |   |     });
+   |   |_______- borrowed value needs to live until here
+   |
+   = note: this error originates in a macro outside of the current crate (in Nightly builds, run with -Z external-macro-backtrace for more info)
+
+error: aborting due to previous error
+
+For more information about this error, try `rustc --explain E0597`.

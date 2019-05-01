@@ -20,3 +20,14 @@ fn add_257_objects() {
         arena.add(257); // should panic
     });
 }
+
+#[test]
+fn two_nano_arenas() {
+    assert_eq!(3, in_nano_arena!(a, {
+        in_nano_arena!(b, {
+            let x = a.add(1usize);
+            let y = b.add(2usize);
+            a[x] + b[y]
+        })
+    }));
+}

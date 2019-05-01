@@ -13,3 +13,6 @@ categories = ["memory-management"]
 uninit = []
 alloc = []
 default = ["alloc"]
+
+[dev-dependencies]
+compiletest_rs = { version = "*", features = [ "stable" ] }
