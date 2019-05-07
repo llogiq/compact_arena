@@ -1,4 +1,4 @@
-use compact_arena::in_nano_arena;
+use compact_arena::{in_nano_arena, mk_nano_arena};
 
 #[test]
 fn add_256_objects() {
@@ -30,4 +30,13 @@ fn two_nano_arenas() {
             a[x] + b[y]
         })
     }));
+}
+
+#[test]
+fn two_nano_arenas_one_scope() {
+    mk_nano_arena!(a);
+    mk_nano_arena!(b);
+    let x = a.add(1usize);
+    let y = b.add(2usize);
+    assert_eq!(3, a[x] + b[y]);
 }
