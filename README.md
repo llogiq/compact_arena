@@ -31,19 +31,18 @@ requires the stored types to be `Default + Copy`. To change this, you can use
 the `uninit` feature to enable usage on all types with a bit more unsafe code:
 
 ```toml
-compact_arena = { version = "0.3", features = ["uninit"] }
+compact_arena = { version = "0.3", features = ["alloc", "uninit"] }
 ```
 
 In your code, use it as follows:
 
 ```rust
-use compact_arena::in_arena;
+use compact_arena::mk_arena;
 
-in_arena!(arena, {
-    let hello = arena.add("Hello");
-    let world = arena.add("World");
-    println!("{}, {}!", arena[hello], arena[world]);
-});
+mk_arena!(arena);
+let hello = arena.add("Hello");
+let world = arena.add("World");
+println!("{}, {}!", arena[hello], arena[world]);
 ```
 
 For further information, please read the [documentation](https://docs.rs/compact_arena).

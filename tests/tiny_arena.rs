@@ -1,4 +1,4 @@
-use compact_arena::in_tiny_arena;
+use compact_arena::{in_tiny_arena, mk_tiny_arena};
 
 #[cfg(not(miri))] // this will take too much time for miri
 #[test]
@@ -31,4 +31,13 @@ fn two_tiny_arenas() {
             a[x] + b[y]
         })
     }));
+}
+
+#[test]
+fn two_tiny_arenas_one_scope() {
+    mk_tiny_arena!(a);
+    mk_tiny_arena!(b);
+    let x = a.add(1usize);
+    let y = b.add(2usize);
+    assert_eq!(3, a[x] + b[y]);
 }

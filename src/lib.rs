@@ -7,16 +7,21 @@
 //! The indexes are sized with the arena. This can reduce memory footprint when
 //! changing pointers to indices e.g. on 64-bit systems.
 //!
-//! The arenas use a variant of "branded indices": The indices contain a type
-//! tag that binds them to their respective arena so you cannot mix up two
-//! arenas by accident. Unlike the [indexing](https://crates.io/crates/indexing)
-//! crate, this implements the type tags as actual unique types. This has the
-//! downside of not being able to `Sync` or `Send` arenas or indices, but on the
-//! other hand, we can store indices within objects that we put into the arena,
-//! which is a boon to things like graph data structures.
+//! The arenas use a variant of "branded indices": The indices contain an
+//! invariant lifetime tag that binds them to their respective arena so you
+//! cannot mix up two arenas by accident. Unlike the
+//! [indexing](https://crates.io/crates/indexing) crate, this generates the
+//! type tags from unique mutable borrows of unit tuples without requiring a
+//! closure. This allows us to store indices within objects that we put into
+//! the arena, which is a boon to things like graph data structures.
 //!
-//! Use the `mk_arena!` to create an arena, then `add` items to it and index it
-//! with `arena[idx]`.
+//! The lifetime tags make it impossible to share an arena via an `Arc`, but
+//! one can use [`crossbeam-utils`](https://docs.rs/crossbeam-utils)' scoped
+//! threads to work around this limitation. See `examples/threads.rs` for a
+//! working example.
+//!
+//! Use the `mk_arena!`/`mk_tiny_arena`/`mk_nano_arena` macros to create an
+//! arena, then `add` or `try_add` items to it and index it with `arena[idx]`.
 //!
 //! # Examples
 //!
@@ -40,7 +45,7 @@
 //!
 //! The compiler gives you a type error if you mix up arenas:
 //!
-//! ```compile_fail
+//! ```compile-fail
 //!# use compact_arena::mk_nano_arena;
 //! mk_nano_arena!(a);
 //! mk_nano_arena!(b);
@@ -198,6 +203,9 @@ macro_rules! mk_arena {
     ($name:ident, $cap:expr) => {
         let mut tag = ();
         let mut $name = unsafe {
+            // this is not per-se unsafe but we need it to be public and
+            // calling it with a non-unique `tag` would allow arena mixups,
+            // which may introduce UB in `Index`/`IndexMut`
             $crate::SmallArena::new(&mut tag, $cap)
         };
     };
@@ -238,6 +246,9 @@ macro_rules! mk_tiny_arena {
     ($name:ident) => {
         let mut tag = ();
         let mut $name = unsafe {
+            // this is not per-se unsafe but we need it to be public and
+            // calling it with a non-unique `tag` would allow arena mixups,
+            // which may introduce UB in `Index`/`IndexMut`
             $crate::TinyArena::new(&mut tag)
         };
     };
@@ -280,6 +291,9 @@ macro_rules! mk_nano_arena {
     ($name:ident) => {
         let mut tag = ();
         let mut $name = unsafe {
+            // this is not per-se unsafe but we need it to be public and
+            // calling it with a non-unique `tag` would allow arena mixups,
+            // which may introduce UB in `Index`/`IndexMut`
             $crate::NanoArena::new(&mut tag)
         };
     };
@@ -351,6 +365,9 @@ impl<'tag, T> Index<Idx32<'tag>> for SmallArena<'tag, T> {
     #[inline]
     fn index(&self, i: Idx32<'tag>) -> &T {
         debug_assert!((i.index as usize) < self.data.len());
+        // we can use unchecked indexing here because branding the indices with
+        // the arenas lifetime ensures that the index is always valid & within
+        // bounds
         unsafe { &self.data.get_unchecked(i.index as usize) }
     }
 }
@@ -361,6 +378,9 @@ impl<'tag, T> IndexMut<Idx32<'tag>> for SmallArena<'tag, T> {
     #[inline]
     fn index_mut(&mut self, i: Idx32<'tag>) -> &mut T {
         debug_assert!((i.index as usize) < self.data.len());
+        // we can use unchecked indexing here because branding the indices with
+        // the arenas lifetime ensures that the index is always valid & within
+        // bounds
         unsafe { self.data.get_unchecked_mut(i.index as usize) }
     }
 }
@@ -477,6 +497,7 @@ mod tiny_arena {
                 TINY_ARENA_ITEMS, NANO_ARENA_ITEMS};
     use core::marker::PhantomData;
     use core::mem::{self, ManuallyDrop};
+    use core::ptr;
 
     /// A "tiny" arena containing <64K elements.
     pub struct TinyArena<'tag, T> {
@@ -503,7 +524,10 @@ mod tiny_arena {
             if i >= TINY_ARENA_ITEMS {
                 return Err(CapacityExceeded(item));
             }
-            self.data[i as usize] = ManuallyDrop::new(item);
+            unsafe {
+                ptr::write(self.data[..].as_mut_ptr().
+                        offset(i as isize), ManuallyDrop::new(item));
+            }
             self.len += 1;
             Ok(Idx16 { index: i as u16, tag: self.tag })
         }
@@ -584,6 +608,9 @@ impl<'tag, T> Index<Idx16<'tag>> for TinyArena<'tag, T> {
 
     fn index(&self, i: Idx16<'tag>) -> &T {
         debug_assert!(u32::from(i.index) < self.len);
+        // we can use unchecked indexing here because branding the indices with
+        // the arenas lifetime ensures that the index is always valid & within
+        // bounds
         unsafe { self.data.get_unchecked(usize::from(i.index)) }
     }
 }
@@ -591,6 +618,9 @@ impl<'tag, T> Index<Idx16<'tag>> for TinyArena<'tag, T> {
 impl<'tag, T> IndexMut<Idx16<'tag>> for TinyArena<'tag, T> {
     fn index_mut(&mut self, i: Idx16<'tag>) -> &mut T {
         debug_assert!(u32::from(i.index) < self.len);
+        // we can use unchecked indexing here because branding the indices with
+        // the arenas lifetime ensures that the index is always valid & within
+        // bounds
         unsafe { self.data.get_unchecked_mut(usize::from(i.index)) }
     }
 }
@@ -600,6 +630,9 @@ impl<'tag, T> Index<Idx8<'tag>> for NanoArena<'tag, T> {
 
     fn index(&self, i: Idx8<'tag>) -> &T {
         debug_assert!(u16::from(i.index) < self.len);
+        // we can use unchecked indexing here because branding the indices with
+        // the arenas lifetime ensures that the index is always valid & within
+        // bounds
         unsafe { self.data.get_unchecked(usize::from(i.index)) }
     }
 }
@@ -607,6 +640,9 @@ impl<'tag, T> Index<Idx8<'tag>> for NanoArena<'tag, T> {
 impl<'tag, T> IndexMut<Idx8<'tag>> for NanoArena<'tag, T> {
     fn index_mut(&mut self, i: Idx8<'tag>) -> &mut T {
         debug_assert!(u16::from(i.index) < self.len);
+        // we can use unchecked indexing here because branding the indices with
+        // the arenas lifetime ensures that the index is always valid & within
+        // bounds
         unsafe { self.data.get_unchecked_mut(usize::from(i.index)) }
     }
 }
