@@ -5,7 +5,8 @@ use crossbeam_utils::thread::scope;
 
 // With crossbeam's `scope`d threads, it is even possible to share an arena
 // and its indices between multiple threads.
-fn main() {
+#[test]
+fn test_scoped_arena() {
     mk_nano_arena!(arena);
     let i = arena.add(1usize);
     let v = scope(|s| {

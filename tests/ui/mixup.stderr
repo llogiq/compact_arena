@@ -3,16 +3,14 @@ error[E0597]: `tag` does not live long enough
    |
 6  |   /     in_nano_arena!(a, {
 7  |   |         in_nano_arena!(b, {
-   |   |_________^
-   |  ||_________|
-   | |||
-8  | |||             let _ = a.add(1usize);
-9  | |||             let x = a.add(1usize);
-10 | |||             let y = b.add(1usize);
-11 | |||             let _ = b[x];
-12 | |||         })
-   | |||          ^
-   | |||__________|
+   |  _|_________^
+8  | | |             let _ = a.add(1usize);
+9  | | |             let x = a.add(1usize);
+10 | | |             let y = b.add(1usize);
+11 | | |             let _ = b[x];
+12 | | |         })
+   | | |          ^
+   | | |          |
    | |_|__________borrowed value does not live long enough
    |   |          `tag` dropped here while still borrowed
 13 |   |     });
