@@ -81,8 +81,18 @@ use core::marker::PhantomData;
 #[cfg(feature = "alloc")]
 use std::error::Error;
 
+/// This is one part of the secret sauce that ensures that indices from
+/// different arenas cannot be mixed. You should never need to use this type in
+/// your code.
 #[derive(Copy, Clone, PartialOrd, PartialEq, Eq)]
-struct InvariantLifetime<'a>(PhantomData<fn(&'a ()) -> &'a ()>);
+pub struct InvariantLifetime<'a>(PhantomData<fn(&'a ()) -> &'a ()>);
+
+/// Create an invariant lifetime. This is one part of the secret sauce that
+/// ensures that indices from different arenas cannot be mixed. You should
+/// never need to use this type in your code.
+pub fn invariant_lifetime<'tag>() -> InvariantLifetime<'tag> {
+    InvariantLifetime(PhantomData)
+}
 
 /// An index into the arena. You will not directly use this type, but one of
 /// the aliases this crate provides (`Idx32`, `Idx16` or `Idx8`).
@@ -201,13 +211,24 @@ pub struct SmallArena<'tag, T> {
 macro_rules! mk_arena {
     ($name:ident) => { $crate::mk_arena!($name, 128*1024) };
     ($name:ident, $cap:expr) => {
-        let mut tag = ();
+        let tag = $crate::invariant_lifetime();
+        let _guard;
         let mut $name = unsafe {
             // this is not per-se unsafe but we need it to be public and
             // calling it with a non-unique `tag` would allow arena mixups,
             // which may introduce UB in `Index`/`IndexMut`
-            $crate::SmallArena::new(&mut tag, $cap)
+            $crate::SmallArena::new(tag, $cap)
         };
+        // this doesn't make it to MIR, but ensures that borrowck will not
+        // unify the lifetimes of two macro calls by binding the lifetime to
+        // drop scope
+        if false {
+            struct Guard<'tag>(&'tag $crate::InvariantLifetime<'tag>);
+            impl<'tag> ::core::ops::Drop for Guard<'tag> {
+                fn drop(&mut self) { }
+            }
+            _guard = Guard(&tag);
+        }
     };
 }
 
@@ -244,13 +265,24 @@ macro_rules! in_arena {
 #[macro_export]
 macro_rules! mk_tiny_arena {
     ($name:ident) => {
-        let mut tag = ();
+        let tag = $crate::invariant_lifetime();
+        let _guard;
         let mut $name = unsafe {
             // this is not per-se unsafe but we need it to be public and
             // calling it with a non-unique `tag` would allow arena mixups,
             // which may introduce UB in `Index`/`IndexMut`
-            $crate::TinyArena::new(&mut tag)
+            $crate::TinyArena::new(tag)
         };
+        // this doesn't make it to MIR, but ensures that borrowck will not
+        // unify the lifetimes of two macro calls by binding the lifetime to
+        // drop scope
+        if false {
+            struct Guard<'tag>(&'tag $crate::InvariantLifetime<'tag>);
+            impl<'tag> ::core::ops::Drop for Guard<'tag> {
+                fn drop(&mut self) { }
+            }
+            _guard = Guard(&tag);
+        }
     };
 }
 
@@ -289,13 +321,24 @@ macro_rules! in_tiny_arena {
 #[macro_export]
 macro_rules! mk_nano_arena {
     ($name:ident) => {
-        let mut tag = ();
+        let tag = $crate::invariant_lifetime();
+        let _guard;
         let mut $name = unsafe {
             // this is not per-se unsafe but we need it to be public and
             // calling it with a non-unique `tag` would allow arena mixups,
             // which may introduce UB in `Index`/`IndexMut`
-            $crate::NanoArena::new(&mut tag)
+            $crate::NanoArena::new(tag)
         };
+        // this doesn't make it to MIR, but ensures that borrowck will not
+        // unify the lifetimes of two macro calls by binding the lifetime to
+        // drop scope
+        if false {
+            struct Guard<'tag>(&'tag $crate::InvariantLifetime<'tag>);
+            impl<'tag> ::core::ops::Drop for Guard<'tag> {
+                fn drop(&mut self) { }
+            }
+            _guard = Guard(&tag);
+        }
     };
 }
 
@@ -331,9 +374,9 @@ impl<'tag, T> SmallArena<'tag, T> {
     /// constructor. You must never use this value in another arena, lest you
     /// might be able to mix up the indices of the two, which could lead to
     /// out of bounds access and thus **Undefined Behavior**!
-    pub unsafe fn new(_: &'tag mut (), capacity: usize) -> Self {
+    pub unsafe fn new(tag: InvariantLifetime<'tag>, capacity: usize) -> Self {
         SmallArena {
-            tag: InvariantLifetime(PhantomData),
+            tag,
             data: Vec::with_capacity(capacity),
         }
     }
@@ -394,7 +437,6 @@ pub use tiny_arena::{TinyArena, NanoArena};
 mod tiny_arena {
     use crate::{CapacityExceeded, Idx16, Idx8, InvariantLifetime,
                 TINY_ARENA_ITEMS, NANO_ARENA_ITEMS};
-    use core::marker::PhantomData;
 
     /// A "tiny" arena containing up to 65536 elements. This variant only works with
     /// types implementing `Default`.
@@ -416,9 +458,9 @@ mod tiny_arena {
         /// this constructor. You must never use this value in another arena,
         /// lest you might be able to mix up the indices of the two, which
         /// could lead to out of bounds access and thus **Undefined Behavior**!
-        pub unsafe fn new(_: &'tag mut ()) -> TinyArena<'tag, T> {
+        pub unsafe fn new(tag: InvariantLifetime<'tag>) -> TinyArena<'tag, T> {
             TinyArena {
-                tag: InvariantLifetime(PhantomData),
+                tag,
                 data: [Default::default(); TINY_ARENA_ITEMS as usize],
                 len: 0
             }
@@ -463,9 +505,9 @@ mod tiny_arena {
         /// this constructor. You must never use this value in another arena,
         /// lest you might be able to mix up the indices of the two, which
         /// could lead to out of bounds access and thus **Undefined Behavior**!
-        pub unsafe fn new(_: &'tag mut ()) -> NanoArena<'tag, T> {
+        pub unsafe fn new(tag: InvariantLifetime<'tag>) -> NanoArena<'tag, T> {
             NanoArena {
-                tag: InvariantLifetime(PhantomData),
+                tag,
                 data: [Default::default(); NANO_ARENA_ITEMS as usize],
                 len: 0
             }
@@ -495,7 +537,6 @@ mod tiny_arena {
 mod tiny_arena {
     use crate::{CapacityExceeded, Idx16, Idx8, InvariantLifetime,
                 TINY_ARENA_ITEMS, NANO_ARENA_ITEMS};
-    use core::marker::PhantomData;
     use core::mem::{self, ManuallyDrop};
     use core::ptr;
 
@@ -508,9 +549,9 @@ mod tiny_arena {
 
     impl<'tag, T> TinyArena<'tag, T> {
         /// create a new TinyArena
-        pub unsafe fn new(_: &'tag mut ()) -> TinyArena<'tag, T> {
+        pub unsafe fn new(tag: InvariantLifetime<'tag>) -> TinyArena<'tag, T> {
             TinyArena {
-                tag: InvariantLifetime(PhantomData),
+                tag,
                 data: mem::uninitialized(),
                 len: 0
             }
@@ -566,9 +607,9 @@ mod tiny_arena {
         /// this constructor. You must never use this value in another arena,
         /// lest you might be able to mix up the indices of the two, which
         /// could lead to out of bounds access and thus **Undefined Behavior**!
-        pub unsafe fn new(_: &'tag mut ()) -> NanoArena<'tag, T> {
+        pub unsafe fn new(tag: InvariantLifetime<'tag>) -> NanoArena<'tag, T> {
             NanoArena {
-                tag: InvariantLifetime(PhantomData),
+                tag,
                 data: mem::uninitialized(),
                 len: 0,
             }
