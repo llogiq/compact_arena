@@ -45,7 +45,7 @@
 //!
 //! The compiler gives you a type error if you mix up arenas:
 //!
-//! ```compile-fail
+//! ```compile_fail
 //!# use compact_arena::mk_nano_arena;
 //! mk_nano_arena!(a);
 //! mk_nano_arena!(b);
@@ -537,14 +537,14 @@ mod tiny_arena {
 mod tiny_arena {
     use crate::{CapacityExceeded, Idx16, Idx8, InvariantLifetime,
                 TINY_ARENA_ITEMS, NANO_ARENA_ITEMS};
-    use core::mem::{self, ManuallyDrop};
+    use core::mem::{self, MaybeUninit};
     use core::ptr;
 
     /// A "tiny" arena containing <64K elements.
     pub struct TinyArena<'tag, T> {
         tag: InvariantLifetime<'tag>,
         pub(crate) len: u32,
-        pub(crate) data: [ManuallyDrop<T>; TINY_ARENA_ITEMS as usize],
+        pub(crate) data: [MaybeUninit<T>; TINY_ARENA_ITEMS as usize],
     }
 
     impl<'tag, T> TinyArena<'tag, T> {
@@ -552,7 +552,7 @@ mod tiny_arena {
         pub unsafe fn new(tag: InvariantLifetime<'tag>) -> TinyArena<'tag, T> {
             TinyArena {
                 tag,
-                data: mem::uninitialized(),
+                data: MaybeUninit::uninit().assume_init(),
                 len: 0
             }
         }
@@ -565,10 +565,7 @@ mod tiny_arena {
             if i >= TINY_ARENA_ITEMS {
                 return Err(CapacityExceeded(item));
             }
-            unsafe {
-                ptr::write(self.data[..].as_mut_ptr().
-                        offset(i as isize), ManuallyDrop::new(item));
-            }
+            self.data[i].write(item);
             self.len += 1;
             Ok(Idx16 { index: i as u16, tag: self.tag })
         }
@@ -583,7 +580,7 @@ mod tiny_arena {
         // dropping the arena drops all values
         fn drop(&mut self) {
             for i in 0..mem::replace(&mut self.len, 0) as usize {
-                unsafe { ManuallyDrop::drop(&mut self.data[i]) };
+                unsafe { ptr::drop_in_place(self.data[i].as_mut_ptr()); }
             }
         }
     }
@@ -594,7 +591,7 @@ mod tiny_arena {
     pub struct NanoArena<'tag, T> {
         tag: InvariantLifetime<'tag>,
         pub(crate) len: u16,
-        pub(crate) data: [ManuallyDrop<T>; NANO_ARENA_ITEMS as usize],
+        pub(crate) data: [MaybeUninit<T>; NANO_ARENA_ITEMS as usize],
     }
 
     impl<'tag, T> NanoArena<'tag, T> {
@@ -610,7 +607,7 @@ mod tiny_arena {
         pub unsafe fn new(tag: InvariantLifetime<'tag>) -> NanoArena<'tag, T> {
             NanoArena {
                 tag,
-                data: mem::uninitialized(),
+                data: MaybeUninit::uninit().assume_init(),
                 len: 0,
             }
         }
@@ -623,7 +620,7 @@ mod tiny_arena {
             if i >= NANO_ARENA_ITEMS {
                 return Err(CapacityExceeded(item));
             }
-            self.data[i as usize] = ManuallyDrop::new(item);
+            self.data[i as usize].write(item);
             self.len += 1;
             Ok(Idx8 { index: i as u8, tag: self.tag })
         }
@@ -638,7 +635,7 @@ mod tiny_arena {
         // dropping the arena drops all values
         fn drop(&mut self) {
             for i in 0..mem::replace(&mut self.len, 0) as usize {
-                unsafe { ManuallyDrop::drop(&mut self.data[i]) };
+                unsafe { ptr::drop_in_place(self.data[i].as_mut_ptr()); }
             }
         }
     }

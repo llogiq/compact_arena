@@ -14,8 +14,9 @@ error[E0597]: `tag` does not live long enough
    | |_|__________borrowed value does not live long enough
    |   |          `tag` dropped here while still borrowed
 13 |   |     });
-   |   |_______- borrowed value needs to live until here
+   |   |_______- borrow might be used here, when `_guard` is dropped and runs the `Drop` code for type `main::Guard`
    |
+   = note: values in a scope are dropped in the opposite order they are defined
    = note: this error originates in a macro outside of the current crate (in Nightly builds, run with -Z external-macro-backtrace for more info)
 
 error: aborting due to previous error
