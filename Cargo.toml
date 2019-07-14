@@ -8,12 +8,14 @@ license = "MIT OR Apache-2.0"
 name = "compact_arena"
 readme = "README.md"
 repository = "https://github.com/llogiq/compact_arena"
-version = "0.3.3"
+version = "0.4.0"
 
 [badges]
 travis-ci = { repository = "llogiq/compact_arena" }
 
 [features]
+# This feature is deprecated and will be removed in a future version. As of
+# 0.4.0, all Tiny- and NanoArenas use `MaybeUninit` to manage their data.
 uninit = []
 alloc = []
 default = ["alloc"]
