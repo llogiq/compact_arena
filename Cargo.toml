@@ -22,4 +22,4 @@ default = ["alloc"]
 
 [dev-dependencies]
 compiletest_rs = { version = "0.5", features = [ "stable" ] }
-crossbeam-utils = "0.7.0"
+crossbeam-utils = "0.8.0"
