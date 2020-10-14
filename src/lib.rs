@@ -1,6 +1,5 @@
 #![deny(missing_docs)]
 #![deny(warnings)]
-
 #![cfg_attr(not(feature = "alloc"), no_std)]
 
 //! A crate with a few single-typed arenas that work exclusively with indexes.
@@ -76,13 +75,12 @@
 //! ```
 
 use core::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use core::marker::PhantomData;
 use core::mem::{self, MaybeUninit};
 use core::ops::{Index, IndexMut};
 use core::ptr;
-use core::marker::PhantomData;
 #[cfg(feature = "alloc")]
 use std::error::Error;
-
 
 /// This is one part of the secret sauce that ensures that indices from
 /// different arenas cannot be mixed. You should never need to use this type in
@@ -148,7 +146,9 @@ pub struct CapacityExceeded<T>(T);
 
 impl<T> CapacityExceeded<T> {
     /// Consumes self and returns the contained value.
-    pub fn into_value(self) -> T { self.0 }
+    pub fn into_value(self) -> T {
+        self.0
+    }
 }
 
 impl<T> Debug for CapacityExceeded<T> {
@@ -165,7 +165,9 @@ impl<T> Display for CapacityExceeded<T> {
 
 #[cfg(feature = "alloc")]
 impl<T> Error for CapacityExceeded<T> {
-    fn description(&self) -> &str { "Capacity exceeded" }
+    fn description(&self) -> &str {
+        "Capacity exceeded"
+    }
 }
 
 /// A "Small" arena based on a resizable slice (i.e. a `Vec`) that can be
@@ -212,7 +214,9 @@ pub struct SmallArena<'tag, T> {
 #[cfg(feature = "alloc")]
 #[macro_export]
 macro_rules! mk_arena {
-    ($name:ident) => { $crate::mk_arena!($name, 128*1024) };
+    ($name:ident) => {
+        $crate::mk_arena!($name, 128 * 1024)
+    };
     ($name:ident, $cap:expr) => {
         let tag = $crate::invariant_lifetime();
         let _guard;
@@ -228,7 +232,7 @@ macro_rules! mk_arena {
         if false {
             struct Guard<'tag>(&'tag $crate::InvariantLifetime<'tag>);
             impl<'tag> ::core::ops::Drop for Guard<'tag> {
-                fn drop(&mut self) { }
+                fn drop(&mut self) {}
             }
             _guard = Guard(&tag);
         }
@@ -251,6 +255,48 @@ macro_rules! in_arena {
         $crate::mk_arena!(arena, $cap);
         let $name = &mut arena;
         $e
+    };
+}
+
+/// Empty the arena, and set the binding to a new arena using the storage of
+/// the argument.
+///
+/// # Examples
+///
+/// ```
+///# use compact_arena::{mk_arena, recycle_arena};
+/// mk_arena!(a, 5);
+/// let i = a.add(22u32);
+/// recycle_arena!(a);
+/// let x = a.add(42);
+/// // i is no longer alive
+/// ```
+#[cfg(feature = "alloc")]
+#[macro_export]
+macro_rules! recycle_arena {
+    ($arena:ident) => {
+        let tag = $crate::invariant_lifetime();
+        let _guard;
+        let mut $arena = {
+            let mut data = $arena.into_inner();
+            // be sure to delete the original data, it can no longer be
+            // referenced anyway
+            data.clear();
+            // this is not per-se unsafe but we need it to be public and
+            // calling it with a non-unique `tag` would allow arena mixups,
+            // which may introduce UB in `Index`/`IndexMut`
+            unsafe { $crate::SmallArena::from_vec(tag, data) }
+        };
+        // this doesn't make it to MIR, but ensures that borrowck will not
+        // unify the lifetimes of two macro calls by binding the lifetime to
+        // drop scope
+        if false {
+            struct Guard<'tag>(&'tag $crate::InvariantLifetime<'tag>);
+            impl<'tag> ::core::ops::Drop for Guard<'tag> {
+                fn drop(&mut self) {}
+            }
+            _guard = Guard(&tag);
+        }
     };
 }
 
@@ -282,7 +328,7 @@ macro_rules! mk_tiny_arena {
         if false {
             struct Guard<'tag>(&'tag $crate::InvariantLifetime<'tag>);
             impl<'tag> ::core::ops::Drop for Guard<'tag> {
-                fn drop(&mut self) { }
+                fn drop(&mut self) {}
             }
             _guard = Guard(&tag);
         }
@@ -338,7 +384,7 @@ macro_rules! mk_nano_arena {
         if false {
             struct Guard<'tag>(&'tag $crate::InvariantLifetime<'tag>);
             impl<'tag> ::core::ops::Drop for Guard<'tag> {
-                fn drop(&mut self) { }
+                fn drop(&mut self) {}
             }
             _guard = Guard(&tag);
         }
@@ -384,16 +430,29 @@ impl<'tag, T> SmallArena<'tag, T> {
         }
     }
 
+    /// move a `Vec` into a SmallArena. This is unlikely to be useful to you,
+    /// it's an implementation detail of the `recycle_arena!` macro.
+    pub unsafe fn from_vec(tag: InvariantLifetime<'tag>, data: Vec<T>) -> Self {
+        SmallArena { tag, data }
+    }
+
+    /// consume the arena and get the data out
+    pub fn into_inner(self) -> Vec<T> {
+        self.data
+    }
+
     /// Add an item to the arena, get an index or CapacityExceeded back.
     #[inline]
-    pub fn try_add(&mut self, item: T)
-    -> Result<Idx32<'tag>, CapacityExceeded<T>> {
+    pub fn try_add(&mut self, item: T) -> Result<Idx32<'tag>, CapacityExceeded<T>> {
         let i = self.data.len();
         if i == (core::u32::MAX as usize) {
             return Err(CapacityExceeded(item));
         }
         self.data.push(item);
-        Ok(Idx { index: (i as u32), tag: self.tag })
+        Ok(Idx {
+            index: (i as u32),
+            tag: self.tag,
+        })
     }
 
     /// Add an item to the arena, get an index back.
@@ -447,21 +506,23 @@ impl<'tag, T> TinyArena<'tag, T> {
         TinyArena {
             tag,
             data: MaybeUninit::uninit().assume_init(),
-            len: 0
+            len: 0,
         }
     }
 
     /// Add an item to the arena, get an index or CapacityExceeded back.
     #[inline]
-    pub fn try_add(&mut self, item: T)
-    -> Result<Idx16<'tag>, CapacityExceeded<T>> {
+    pub fn try_add(&mut self, item: T) -> Result<Idx16<'tag>, CapacityExceeded<T>> {
         let i = self.len;
         if i >= TINY_ARENA_ITEMS {
             return Err(CapacityExceeded(item));
         }
         self.data[i as usize] = MaybeUninit::new(item);
         self.len += 1;
-        Ok(Idx16 { index: i as u16, tag: self.tag })
+        Ok(Idx16 {
+            index: i as u16,
+            tag: self.tag,
+        })
     }
 
     /// Add an item to the arena, get an index back
@@ -474,7 +535,9 @@ impl<'tag, T> Drop for TinyArena<'tag, T> {
     // dropping the arena drops all values
     fn drop(&mut self) {
         for i in 0..mem::replace(&mut self.len, 0) as usize {
-            unsafe { ptr::drop_in_place(self.data[i].as_mut_ptr()); }
+            unsafe {
+                ptr::drop_in_place(self.data[i].as_mut_ptr());
+            }
         }
     }
 }
@@ -508,15 +571,17 @@ impl<'tag, T> NanoArena<'tag, T> {
 
     /// Add an item to the arena, get an index or CapacityExceeded back.
     #[inline]
-    pub fn try_add(&mut self, item: T)
-    -> Result<Idx8<'tag>, CapacityExceeded<T>> {
+    pub fn try_add(&mut self, item: T) -> Result<Idx8<'tag>, CapacityExceeded<T>> {
         let i = self.len;
         if i >= NANO_ARENA_ITEMS {
             return Err(CapacityExceeded(item));
         }
         self.data[usize::from(i)] = MaybeUninit::new(item);
         self.len += 1;
-        Ok(Idx8 { index: i as u8, tag: self.tag })
+        Ok(Idx8 {
+            index: i as u8,
+            tag: self.tag,
+        })
     }
 
     /// Add an item to the arena, get an index back
@@ -529,7 +594,9 @@ impl<'tag, T> Drop for NanoArena<'tag, T> {
     // dropping the arena drops all values
     fn drop(&mut self) {
         for i in 0..mem::replace(&mut self.len, 0) as usize {
-            unsafe { ptr::drop_in_place(self.data[i].as_mut_ptr()); }
+            unsafe {
+                ptr::drop_in_place(self.data[i].as_mut_ptr());
+            }
         }
     }
 }
@@ -552,7 +619,12 @@ impl<'tag, T> IndexMut<Idx16<'tag>> for TinyArena<'tag, T> {
         // we can use unchecked indexing here because branding the indices with
         // the arenas lifetime ensures that the index is always valid & within
         // bounds
-        unsafe { &mut *self.data.get_unchecked_mut(usize::from(i.index)).as_mut_ptr() }
+        unsafe {
+            &mut *self
+                .data
+                .get_unchecked_mut(usize::from(i.index))
+                .as_mut_ptr()
+        }
     }
 }
 
@@ -574,6 +646,11 @@ impl<'tag, T> IndexMut<Idx8<'tag>> for NanoArena<'tag, T> {
         // we can use unchecked indexing here because branding the indices with
         // the arenas lifetime ensures that the index is always valid & within
         // bounds
-        unsafe { &mut *self.data.get_unchecked_mut(usize::from(i.index)).as_mut_ptr() }
+        unsafe {
+            &mut *self
+                .data
+                .get_unchecked_mut(usize::from(i.index))
+                .as_mut_ptr()
+        }
     }
 }
