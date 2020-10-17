@@ -24,24 +24,37 @@ fn add_65537_objects() {
 
 #[test]
 fn two_tiny_arenas() {
-    std::thread::Builder::new().stack_size(32 * 1024 * 1024).spawn(|| {
-        assert_eq!(3, in_tiny_arena!(a, {
-            in_tiny_arena!(b, {
-                let x = a.add(1usize);
-                let y = b.add(2usize);
-                a[x] + b[y]
-            })
-        }))
-    }).unwrap().join().unwrap();
+    std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .spawn(|| {
+            assert_eq!(
+                3,
+                in_tiny_arena!(a, {
+                    in_tiny_arena!(b, {
+                        let x = a.add(1usize);
+                        let y = b.add(2usize);
+                        a[x] + b[y]
+                    })
+                })
+            )
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
 
 #[test]
 fn two_tiny_arenas_one_scope() {
-    std::thread::Builder::new().stack_size(32 * 1024 * 1024).spawn(|| {
-        mk_tiny_arena!(a);
-        mk_tiny_arena!(b);
-        let x = a.add(1usize);
-        let y = b.add(2usize);
-        assert_eq!(3, a[x] + b[y])
-    }).unwrap().join().unwrap();
+    std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .spawn(|| {
+            mk_tiny_arena!(a);
+            mk_tiny_arena!(b);
+            let x = a.add(1usize);
+            let y = b.add(2usize);
+            assert_eq!(3, a[x] + b[y])
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }

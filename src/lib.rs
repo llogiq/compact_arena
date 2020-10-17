@@ -19,8 +19,9 @@
 //! threads to work around this limitation. See `examples/threads.rs` for a
 //! working example.
 //!
-//! Use the `mk_arena!`/`mk_tiny_arena`/`mk_nano_arena` macros to create an
-//! arena, then `add` or `try_add` items to it and index it with `arena[idx]`.
+//! Use the [`mk_arena!`]/[`mk_tiny_arena!`]/[`mk_nano_arena!`] macros to
+//! create an arena, then `add` or `try_add` items to it and index it with
+//! `arena[idx]`.
 //!
 //! # Examples
 //!
@@ -73,6 +74,19 @@
 //! }
 //! recursive(None);
 //! ```
+//!
+//! The [`SmallArena`] type keeps its storage in a `Vec` that may be useful to
+//! reuse. For that reason we have the [`recycle_arena!`] macro. There is no
+//! variant of this for the [`Tinyarena`] and [`NanoArena`] types, which store
+//! their items inline.
+//!
+//! [`mk_arena!`]: macro.mk_arena.html
+//! [`recycle_arena!`]: macro.recycle_arena.html
+//! [`mk_tiny_arena!`]: macro.mk_tiny_arena.html
+//! [`mk_nano_arena!`]: macro.mk_nano_arena.html
+//! [`SmallArena`]: struct.SmallArena.html
+//! [`TinyArena`]: struct.TinyArena.html
+//! [`NanoArena`]: struct.NanoArena.html
 
 use core::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use core::marker::PhantomData;
@@ -493,11 +507,13 @@ impl<'tag, T> IndexMut<Idx32<'tag>> for SmallArena<'tag, T> {
 const TINY_ARENA_ITEMS: u32 = 65536;
 const NANO_ARENA_ITEMS: u16 = 256;
 
+type TinyArenaData<T> = [MaybeUninit<T>; TINY_ARENA_ITEMS as usize];
+
 /// A "tiny" arena containing <64K elements.
 pub struct TinyArena<'tag, T> {
     tag: InvariantLifetime<'tag>,
     pub(crate) len: u32,
-    pub(crate) data: [MaybeUninit<T>; TINY_ARENA_ITEMS as usize],
+    pub(crate) data: TinyArenaData<T>,
 }
 
 impl<'tag, T> TinyArena<'tag, T> {
@@ -542,13 +558,15 @@ impl<'tag, T> Drop for TinyArena<'tag, T> {
     }
 }
 
+type NanoArenaData<T> = [MaybeUninit<T>; NANO_ARENA_ITEMS as usize];
+
 /// A "nano" arena containing up to 256 elements.
 ///
 /// You will likely use this via the `mk_nano_arena` macro.
 pub struct NanoArena<'tag, T> {
     tag: InvariantLifetime<'tag>,
     pub(crate) len: u16,
-    pub(crate) data: [MaybeUninit<T>; NANO_ARENA_ITEMS as usize],
+    pub(crate) data: NanoArenaData<T>,
 }
 
 impl<'tag, T> NanoArena<'tag, T> {

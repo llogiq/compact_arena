@@ -17,6 +17,7 @@ fn test_scoped_arena() {
         });
         // join it, receiving a new index from the thread
         t.join().unwrap()
-    }).unwrap();
+    })
+    .unwrap();
     assert_eq!(2, arena[v]);
 }
