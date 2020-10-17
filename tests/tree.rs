@@ -1,14 +1,13 @@
 #[cfg(feature = "alloc")]
-use compact_arena::{SmallArena as Arena, mk_arena, Idx32 as Idx};
+use compact_arena::{mk_arena, Idx32 as Idx, SmallArena as Arena};
 
 #[cfg(not(feature = "alloc"))]
-use compact_arena::{NanoArena as Arena, mk_nano_arena as mk_arena, Idx8 as Idx};
+use compact_arena::{mk_nano_arena as mk_arena, Idx8 as Idx, NanoArena as Arena};
 
 #[derive(Default, Copy, Clone)]
 struct Tree<'tag>(Option<(Idx<'tag>, Idx<'tag>)>);
 
-fn top_down_tree<'tag>(arena: &mut Arena<'tag, Tree<'tag>>, d: usize)
--> Idx<'tag> {
+fn top_down_tree<'tag>(arena: &mut Arena<'tag, Tree<'tag>>, d: usize) -> Idx<'tag> {
     let children = if d > 0 {
         Some((top_down_tree(arena, d - 1), top_down_tree(arena, d - 1)))
     } else {
@@ -17,8 +16,7 @@ fn top_down_tree<'tag>(arena: &mut Arena<'tag, Tree<'tag>>, d: usize)
     arena.add(Tree(children))
 }
 
-fn bottom_up_tree<'tag>(arena: &mut Arena<'tag, Tree<'tag>>, depth: usize)
--> Idx<'tag> {
+fn bottom_up_tree<'tag>(arena: &mut Arena<'tag, Tree<'tag>>, depth: usize) -> Idx<'tag> {
     let i = arena.add(Tree(None));
     if depth > 0 {
         let d = depth - 1;

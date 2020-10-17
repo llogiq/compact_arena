@@ -1,4 +1,4 @@
-use compiletest_rs::{Config, run_tests};
+use compiletest_rs::{run_tests, Config};
 
 #[test]
 pub fn run_ui_tests() {
