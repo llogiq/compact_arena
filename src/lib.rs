@@ -109,6 +109,26 @@ pub fn invariant_lifetime<'tag>() -> InvariantLifetime<'tag> {
     InvariantLifetime(PhantomData)
 }
 
+/// Fix an invariant lifetime to a `tag` value.
+#[macro_export]
+macro_rules! tagged {
+    ($tag:ident, $stmt:stmt) => {
+        let $tag = $crate::invariant_lifetime();
+        let _guard;
+        $stmt;
+        // this doesn't make it to MIR, but ensures that borrowck will not
+        // unify the lifetimes of two macro calls by binding the lifetime to
+        // drop scope
+        if false {
+            struct Guard<'tag>(&'tag $crate::InvariantLifetime<'tag>);
+            impl<'tag> ::core::ops::Drop for Guard<'tag> {
+                fn drop(&mut self) {}
+            }
+            _guard = Guard(&$tag);
+        }
+    };
+}
+
 /// An index into the arena. You will not directly use this type, but one of
 /// the aliases this crate provides (`Idx32`, `Idx16` or `Idx8`).
 ///
@@ -232,25 +252,13 @@ macro_rules! mk_arena {
         $crate::mk_arena!($name, 128 * 1024)
     };
     ($name:ident, $cap:expr) => {
-        let tag = $crate::invariant_lifetime();
-        let _guard;
-        let mut $name = unsafe {
-            // this is not per-se unsafe but we need it to be public and
-            // calling it with a non-unique `tag` would allow arena mixups,
-            // which may introduce UB in `Index`/`IndexMut`
-            $crate::SmallArena::new(tag, $cap)
-        };
-        // this doesn't make it to MIR, but ensures that borrowck will not
-        // unify the lifetimes of two macro calls by binding the lifetime to
-        // drop scope
-        if false {
-            struct Guard<'tag>(&'tag $crate::InvariantLifetime<'tag>);
-            impl<'tag> ::core::ops::Drop for Guard<'tag> {
-                fn drop(&mut self) {}
-            }
-            _guard = Guard(&tag);
-        }
-    };
+		$crate::tagged!(tag, let mut $name = unsafe {
+			// this is not per-se unsafe but we need it to be public and
+			// calling it with a non-unique `tag` would allow arena mixups,
+			// which may introduce UB in `Index`/`IndexMut`
+			$crate::SmallArena::new(tag, $cap)
+		});
+	};
 }
 
 /// Run a piece of code inside an arena
@@ -289,28 +297,19 @@ macro_rules! in_arena {
 #[macro_export]
 macro_rules! recycle_arena {
     ($arena:ident) => {
-        let tag = $crate::invariant_lifetime();
-        let _guard;
-        let mut $arena = {
-            let mut data = $arena.into_inner();
-            // be sure to delete the original data, it can no longer be
-            // referenced anyway
-            data.clear();
-            // this is not per-se unsafe but we need it to be public and
-            // calling it with a non-unique `tag` would allow arena mixups,
-            // which may introduce UB in `Index`/`IndexMut`
-            unsafe { $crate::SmallArena::from_vec(tag, data) }
-        };
-        // this doesn't make it to MIR, but ensures that borrowck will not
-        // unify the lifetimes of two macro calls by binding the lifetime to
-        // drop scope
-        if false {
-            struct Guard<'tag>(&'tag $crate::InvariantLifetime<'tag>);
-            impl<'tag> ::core::ops::Drop for Guard<'tag> {
-                fn drop(&mut self) {}
-            }
-            _guard = Guard(&tag);
-        }
+		$crate::tagged!(
+			tag,
+			let mut $arena = {
+				let mut data = $arena.into_inner();
+				// be sure to delete the original data, it can no longer be
+				// referenced anyway
+				data.clear();
+				// this is not per-se unsafe but we need it to be public and
+				// calling it with a non-unique `tag` would allow arena mixups,
+				// which may introduce UB in `Index`/`IndexMut`
+				unsafe { $crate::SmallArena::from_vec(tag, data) }
+			}
+        );
     };
 }
 
@@ -328,24 +327,14 @@ macro_rules! recycle_arena {
 #[macro_export]
 macro_rules! mk_tiny_arena {
     ($name:ident) => {
-        let tag = $crate::invariant_lifetime();
-        let _guard;
-        let mut $name = unsafe {
-            // this is not per-se unsafe but we need it to be public and
-            // calling it with a non-unique `tag` would allow arena mixups,
-            // which may introduce UB in `Index`/`IndexMut`
-            $crate::TinyArena::new(tag)
-        };
-        // this doesn't make it to MIR, but ensures that borrowck will not
-        // unify the lifetimes of two macro calls by binding the lifetime to
-        // drop scope
-        if false {
-            struct Guard<'tag>(&'tag $crate::InvariantLifetime<'tag>);
-            impl<'tag> ::core::ops::Drop for Guard<'tag> {
-                fn drop(&mut self) {}
-            }
-            _guard = Guard(&tag);
-        }
+        $crate::tagged!(tag,
+			let mut $name = unsafe {
+				// this is not per-se unsafe but we need it to be public and
+				// calling it with a non-unique `tag` would allow arena mixups,
+				// which may introduce UB in `Index`/`IndexMut`
+				$crate::TinyArena::new(tag)
+			}
+		)
     };
 }
 
@@ -384,24 +373,15 @@ macro_rules! in_tiny_arena {
 #[macro_export]
 macro_rules! mk_nano_arena {
     ($name:ident) => {
-        let tag = $crate::invariant_lifetime();
-        let _guard;
-        let mut $name = unsafe {
-            // this is not per-se unsafe but we need it to be public and
-            // calling it with a non-unique `tag` would allow arena mixups,
-            // which may introduce UB in `Index`/`IndexMut`
-            $crate::NanoArena::new(tag)
-        };
-        // this doesn't make it to MIR, but ensures that borrowck will not
-        // unify the lifetimes of two macro calls by binding the lifetime to
-        // drop scope
-        if false {
-            struct Guard<'tag>(&'tag $crate::InvariantLifetime<'tag>);
-            impl<'tag> ::core::ops::Drop for Guard<'tag> {
-                fn drop(&mut self) {}
-            }
-            _guard = Guard(&tag);
-        }
+        $crate::tagged!(
+			tag,
+			let mut $name = unsafe {
+				// this is not per-se unsafe but we need it to be public and
+				// calling it with a non-unique `tag` would allow arena mixups,
+				// which may introduce UB in `Index`/`IndexMut`
+				$crate::NanoArena::new(tag)
+			}
+        );
     };
 }
 
