@@ -75,6 +75,29 @@
 //! recursive(None);
 //! ```
 //!
+//! Even if you try to mix up arenas using multiple threads, you will run into
+//! lifetime errors:
+//!
+//! ```compile_fail
+//!# use std::{thread, sync::mpsc::{channel, Receiver, Sender}};
+//!# use compact_arena::{mk_tiny_arena, Idx16};
+//! fn mixup(c: Result<Sender<Idx16<'_>>, Receiver<Idx16<'_>>>) {
+//!     mk_tiny_arena!(arena);
+//!     match (s, r) {
+//!         Ok(s) => s.send(arena.add(1usize)).unwrap(),
+//!         Err(r) => assert_eq!(1, arena[r.recv().unwrap()]),
+//!     }
+//! }
+//!     
+//! fn main() {
+//!     let (s, r) = channel();
+//!     let st = thread::spawn(|| mixup(Ok(s)));
+//!     let rt = thread::spawn(|| mixup(Err(r)));
+//!     st.join().unwrap();
+//!     rt.join().unwrap();
+//! }
+//! ```
+//!
 //! The [`SmallArena`] type keeps its storage in a `Vec` that may be useful to
 //! reuse. For that reason we have the [`recycle_arena!`] macro. There is no
 //! variant of this for the [`Tinyarena`] and [`NanoArena`] types, which store
@@ -454,6 +477,40 @@ impl<'tag, T> SmallArena<'tag, T> {
     pub fn add(&mut self, item: T) -> Idx32<'tag> {
         self.try_add(item).unwrap()
     }
+
+    /// View the current elements as a slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    ///# use compact_arena::mk_arena;
+    /// mk_arena!(arena);
+    /// let _ = arena.add("Hi!");
+    /// let _ = arena.add("Bye!");
+    /// assert_eq!(&["Hi!", "Bye!"], arena.as_slice());
+    /// ````
+    #[inline]
+    pub fn as_slice(&self) -> &[T] {
+        &self.data[..]
+    }
+
+    /// Mutate the current elements as a slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    ///# use compact_arena::mk_arena;
+    /// mk_arena!(arena);
+    /// let one = arena.add(1u32);
+    /// let two = arena.add(2);
+    /// arena.as_mut_slice().into_iter().for_each(|i| *i += 1);
+    /// assert_eq!(arena[one], 2);
+    /// assert_eq!(arena[two], 3);
+    /// ```
+    #[inline]
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        &mut self.data[..]
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -484,6 +541,9 @@ impl<'tag, T> IndexMut<Idx32<'tag>> for SmallArena<'tag, T> {
     }
 }
 
+#[cfg(target_os = "windows")]
+const TINY_ARENA_ITEMS: u32 = 16384;
+#[cfg(not(target_os = "windows"))]
 const TINY_ARENA_ITEMS: u32 = 65536;
 const NANO_ARENA_ITEMS: u16 = 256;
 
@@ -524,6 +584,40 @@ impl<'tag, T> TinyArena<'tag, T> {
     /// Add an item to the arena, get an index back
     pub fn add(&mut self, item: T) -> Idx16<'tag> {
         self.try_add(item).unwrap()
+    }
+
+    /// View the current elements as a slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    ///# use compact_arena::mk_tiny_arena;
+    /// mk_tiny_arena!(arena);
+    /// let _ = arena.add(1u8);
+    /// let _ = arena.add(2u8);
+    /// assert_eq!(&[1, 2], arena.as_slice());
+    /// ````
+    #[inline]
+    pub fn as_slice(&self) -> &[T] {
+        unsafe { &*(&self.data[..self.len as usize] as *const [MaybeUninit<T>] as *const [T]) }
+    }
+
+    /// Mutate the current elements as a slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    ///# use compact_arena::mk_tiny_arena;
+    /// mk_tiny_arena!(arena);
+    /// let one = arena.add(1u32);
+    /// let two = arena.add(2);
+    /// arena.as_mut_slice().into_iter().for_each(|i| *i += 1);
+    /// assert_eq!(arena[one], 2);
+    /// assert_eq!(arena[two], 3);
+    /// ```
+    #[inline]
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        unsafe { &mut *(&mut self.data[..self.len as usize] as *mut [MaybeUninit<T>] as *mut [T]) }
     }
 }
 
@@ -568,6 +662,17 @@ impl<'tag, T> NanoArena<'tag, T> {
     }
 
     /// Add an item to the arena, get an index or CapacityExceeded back.
+    ///
+    /// # Example
+    ///
+    /// ```
+    ///# use compact_arena::{mk_nano_arena};
+    /// mk_nano_arena!(arena);
+    /// let first = arena.try_add(1u8).unwrap();
+    /// (0u8..255).for_each(|i| drop(arena.try_add(1u8).unwrap()));
+    /// let Err(cap_exc) = arena.try_add(42) else { panic!() };
+    /// assert_eq!(42, cap_exc.into_value());
+    /// ```
     #[inline]
     pub fn try_add(&mut self, item: T) -> Result<Idx8<'tag>, CapacityExceeded<T>> {
         let i = self.len;
@@ -585,6 +690,40 @@ impl<'tag, T> NanoArena<'tag, T> {
     /// Add an item to the arena, get an index back
     pub fn add(&mut self, item: T) -> Idx8<'tag> {
         self.try_add(item).unwrap()
+    }
+
+    /// View the current elements as a slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    ///# use compact_arena::mk_nano_arena;
+    /// mk_nano_arena!(arena);
+    /// let _ = arena.add("Hi!");
+    /// let _ = arena.add("Bye!");
+    /// assert_eq!(&["Hi!", "Bye!"], arena.as_slice());
+    /// ````
+    #[inline]
+    pub fn as_slice(&self) -> &[T] {
+        unsafe { &*(&self.data[..self.len as usize] as *const [MaybeUninit<T>] as *const [T]) }
+    }
+
+    /// Mutate the current elements as a slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    ///# use compact_arena::mk_nano_arena;
+    /// mk_nano_arena!(arena);
+    /// let one = arena.add(1u32);
+    /// let two = arena.add(2);
+    /// arena.as_mut_slice().into_iter().for_each(|i| *i += 1);
+    /// assert_eq!(arena[one], 2);
+    /// assert_eq!(arena[two], 3);
+    /// ```
+    #[inline]
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        unsafe { &mut *(&mut self.data[..self.len as usize] as *mut [MaybeUninit<T>] as *mut [T]) }
     }
 }
 

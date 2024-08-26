@@ -1,6 +1,7 @@
 use compact_arena::{in_tiny_arena, mk_tiny_arena};
 
-#[cfg(not(miri))] // this will take too much time for miri
+#[cfg(not(any(miri, target_os = "windows")))]
+// this will take too much time for miri and won't work on windows
 #[test]
 fn add_65536_objects() {
     in_tiny_arena!(arena, {
